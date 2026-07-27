@@ -1,3 +1,9 @@
+[![Yii3](https://img.shields.io/badge/Powered_by-Yii_Framework-green.svg?style=flat)](https://www.yiiframework.com/)
+[![Latest Version](https://img.shields.io/packagist/v/rossaddison/ddd-template.svg?style=flat)](https://packagist.org/packages/rossaddison/ddd-template)
+[![Total Downloads](https://img.shields.io/packagist/dt/rossaddison/ddd-template.svg?style=flat)](https://packagist.org/packages/rossaddison/ddd-template)
+[![PHP Version](https://img.shields.io/packagist/php-v/rossaddison/ddd-template.svg?style=flat)](https://packagist.org/packages/rossaddison/ddd-template)
+[![License](https://img.shields.io/packagist/l/rossaddison/ddd-template.svg?style=flat)](https://packagist.org/packages/rossaddison/ddd-template)
+
 # ddd-template
 
 A lean [Yii3](https://www.yiiframework.com/) starter, extracted from
