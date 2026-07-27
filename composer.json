@@ -9,7 +9,7 @@
         "domain-driven-design"
     ],
     "homepage": "https://github.com/rossaddison/ddd-template",
-    "license": "BSD-3-Clause",
+    "license": "MIT",
     "support": {
         "source": "https://github.com/rossaddison/ddd-template",
         "issues": "https://github.com/rossaddison/ddd-template/issues"
