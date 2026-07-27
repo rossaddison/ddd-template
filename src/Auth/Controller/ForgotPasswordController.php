@@ -1,0 +1,202 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Auth\Controller;
+
+use App\Infrastructure\Persistence\Token\Token;
+use App\Auth\MailerAddresses;
+use App\Auth\TokenRepository as tR;
+use App\Auth\Trait\TurnstileVerification;
+use App\Application\Setting\GetSetting;
+use App\Domain\Setting\SettingKey;
+use App\Infrastructure\Persistence\User\User;
+use App\User\UserRepository as uR;
+use App\Service\WebControllerService;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Log\LoggerInterface;
+use Yiisoft\Http\Method;
+use Yiisoft\Html\Tag\A;
+use Yiisoft\Html\Tag\Body;
+use Yiisoft\FormModel\FormHydrator;
+use Yiisoft\Mailer\MailerInterface;
+use App\Auth\Form\RequestPasswordResetTokenForm;
+use Yiisoft\Router\CurrentRoute;
+use Yiisoft\Router\FastRoute\UrlGenerator;
+use Yiisoft\Security\TokenMask;
+use Yiisoft\Translator\TranslatorInterface as Translator;
+use Yiisoft\Yii\View\Renderer\WebViewRenderer;
+
+final class ForgotPasswordController
+{
+    use TurnstileVerification;
+
+    public const string REQUEST_PASSWORD_RESET_TOKEN = 'request-password-reset';
+
+    public function __construct(
+        private readonly WebControllerService $webService,
+        private WebViewRenderer $webViewRenderer,
+        private readonly MailerInterface $mailer,
+        private readonly MailerAddresses $mailerAddresses,
+        private readonly GetSetting $getSetting,
+        private readonly Translator $translator,
+        private readonly UrlGenerator $urlGenerator,
+        private readonly LoggerInterface $logger,
+        private readonly AuthSecurityHelper $secHelper,
+    ) {
+        // withControllerName returns a new instance so reassignment is needed
+        $this->webViewRenderer = $webViewRenderer->withControllerName(
+            'forgotpassword');
+    }
+
+    /**
+     * Note: The actual token is not stored on the server. It is built from
+     *  a random 32 bit string and a timestamp.
+     *  Stored under entity Token. Two separate fields. This token when sent
+     *  to user is always masked and when received by the
+     * ResetPasswordController.php it is unmasked and compared and a form with
+     *  'new password' and confirm 'new password' are presented
+     */
+    public function forgot(
+        CurrentRoute $currentRoute,
+        FormHydrator $formHydrator,
+        ServerRequestInterface $request,
+        RequestPasswordResetTokenForm $requestPasswordResetTokenForm,
+        tR $tR,
+        uR $uR,
+    ): ResponseInterface {
+        if ($request->getMethod() === Method::POST) {
+            $ip    = $this->secHelper->getClientIpAddress($request);
+            $body  = (array) $request->getParsedBody();
+            $token = (string) ($body['cf-turnstile-response'] ?? '');
+            if (!$this->secHelper->checkRateLimit(hash('sha256', 'forgot_ctrl' . $ip))
+                || !$this->verifyTurnstile($token, $ip)
+            ) {
+                return $this->webService->getRedirectResponse('auth/forgotpassword');
+            }
+        }
+
+        $response = null;
+        if ($formHydrator->populateFromPostAndValidate($requestPasswordResetTokenForm, $request)) {
+            $user = $uR->findByEmail($requestPasswordResetTokenForm->getEmail());
+            $response = $this->handleForgotUser($user, $currentRoute, $tR);
+            $response ??= $this->webService->getRedirectResponse('site/forgotalert');
+        }
+        $turnstileSiteKey = ($this->getSetting)(new SettingKey('turnstile_site_key'))?->value() ?? '';
+        return $response ?? $this->webViewRenderer->render('forgotpassword', [
+            'formModel'        => $requestPasswordResetTokenForm,
+            'turnstileSiteKey' => $turnstileSiteKey,
+        ]);
+    }
+
+    private function handleForgotUser(?User $user, CurrentRoute $currentRoute, tR $tR): ?ResponseInterface
+    {
+        if (null === $user) {
+            $this->logger->error($this->translator->translate('loginalert.user.not.found'));
+            return $this->webService->getRedirectResponse('site/forgotusernotfound');
+        }
+        $identityId = (int) $user->getIdentity()->getId();
+        if ($identityId <= 0) {
+            return null;
+        }
+        return $this->handleValidIdentity($identityId, $user, $currentRoute, $tR);
+    }
+
+    private function handleValidIdentity(
+        int $identityId,
+        User $user,
+        CurrentRoute $currentRoute,
+        tR $tR,
+    ): ?ResponseInterface {
+        $token = $this->resolvePasswordResetToken($identityId, $tR);
+        if (strlen($token) <= 0) {
+            return null;
+        }
+        $_language = (string) $currentRoute->getArgument('_language');
+        return $this->trySendEmail($user, $token, $_language);
+    }
+
+    private function resolvePasswordResetToken(int $identityId, tR $tR): string
+    {
+        $tokenRecord = $tR->findTokenByIdentityIdAndType(
+            $identityId, self::REQUEST_PASSWORD_RESET_TOKEN);
+        if (null == $tokenRecord) {
+            return $this->requestPasswordResetToken($identityId, $tR);
+        }
+        $tokenString = $tokenRecord->getToken();
+        if (null === $tokenString) {
+            return '';
+        }
+        $timeStamp = $tokenRecord->getCreatedAt()->getTimestamp();
+        return ($timeStamp + 3600 >= time())
+            ? $tokenString . '_' . (string) $timeStamp
+            : $this->requestPasswordResetToken($identityId, $tR);
+    }
+
+    private function trySendEmail(User $user, string $token, string $_language): ?ResponseInterface
+    {
+        $to = $user->getEmail();
+        $login = $user->getLogin();
+        $htmlBody = $this->htmlBodyWithMaskedRandomAndTimeTokenLink($_language, $token);
+        $email = new \Yiisoft\Mailer\Message(
+            charset: 'utf-8',
+            headers: [
+                'X-Origin' => ['0', '1'],
+                'X-Pass' => 'pass',
+            ],
+            subject: $login . ': <' . $to . '>',
+            date: new \DateTimeImmutable('now'),
+            from: [
+                $this->mailerAddresses->adminEmail => $this->translator->translate('administrator'),
+            ],
+            to: $to,
+            htmlBody: $htmlBody,
+        );
+        $email->withAddedHeader('Message-ID', $this->mailerAddresses->adminEmail);
+        try {
+            $this->mailer->send($email);
+            return null;
+        } catch (\Exception $e) {
+            $this->logger->error($e->getMessage());
+            return $this->webService->getRedirectResponse('site/forgotemailfailed');
+        }
+    }
+
+    private function requestPasswordResetToken(
+        int $identityId,
+        tR $tR,
+    ): string {
+        $newTokenRecord = new Token($identityId,
+            self::REQUEST_PASSWORD_RESET_TOKEN);
+        $requestPasswordResetToken = '';
+        $tR->save($newTokenRecord);
+        $tokenString = $newTokenRecord->getToken();
+        if (null !== $tokenString) {
+            $timeStamp = (string) $newTokenRecord
+                ->getCreatedAt()
+                ->getTimestamp();
+            $requestPasswordResetToken = $tokenString . '_' . $timeStamp;
+        }
+        return $requestPasswordResetToken;
+    }
+
+    private function htmlBodyWithMaskedRandomAndTimeTokenLink(
+        string $_language,
+        string $randomAndTimeToken,
+    ): string {
+        $tokenWithMask = TokenMask::apply($randomAndTimeToken);
+        $content = new A()
+            ->href($this->urlGenerator->generateAbsolute(
+                'auth/resetpassword',
+                [
+                    '_language' => $_language,
+                    'token' => $tokenWithMask,
+                ],
+            ))
+            ->content($this->translator->translate('password.reset.email'));
+        return new Body()
+            ->content($content)
+            ->render();
+    }
+}

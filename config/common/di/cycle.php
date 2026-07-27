@@ -11,6 +11,7 @@ use Cycle\ORM\Factory;
 use Cycle\ORM\FactoryInterface;
 use Cycle\ORM\ORMInterface;
 use Cycle\ORM\Select;
+use Yiisoft\Data\Cycle\Writer\EntityWriter;
 use Yiisoft\Data\Writer\DataWriterInterface;
 
 /** @var array $params */
@@ -31,6 +32,10 @@ return [
     DatabaseInterface::class => static function (DatabaseManager $dbManager): DatabaseInterface {
         return $dbManager->database();
     },
+
+    // CycleSettingRepository (and any other repository that depends on the
+    // interface rather than the concrete Cycle writer) needs this bound.
+    DataWriterInterface::class => EntityWriter::class,
 
     // CycleSettingRepository extends Select\Repository and needs Select<Setting>
     // which cannot be auto-resolved by the DI container — wire it explicitly here.

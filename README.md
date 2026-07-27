@@ -34,10 +34,12 @@ adding your own module.
 
 ## Status
 
-This repo is **not yet runnable end-to-end** — the Auth/OAuth/2FA
-controllers, forms, and RBAC seed data are still being ported over from the
-invoice repo. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for exactly what's
-done, what's deferred, and how to resume.
+Runnable end-to-end and live-verified: signup → login → mandatory 2FA setup
+→ 2FA verify → Shell → logout, all exercised against a real local MySQL
+database. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for exactly what was
+tested, the deliberate simplifications made versus invoice's own Auth flow
+(no email-verification gate, no HMRC/GovUk/OpenBanking), and what's still
+out of scope (live OAuth provider callbacks, a real Telegram bot).
 
 ## Requirements
 
@@ -65,5 +67,5 @@ php yii serve
 
 ```bash
 vendor/bin/psalm --no-cache   # errorLevel=1, findUnusedCode=true — clean
-vendor/bin/testo --suite=Unit # once Testo tests are ported (see docs/PROGRESS.md)
+vendor/bin/testo --suite=Unit # 22/22 passing
 ```

@@ -17,9 +17,6 @@
         <file name="autoload.php"/>
         <ignoreFiles>
             <directory name="vendor" />
-            <!-- Depends on src/Auth/Form/SignupForm.php, not yet ported (Auth/OAuth/2FA
-                 port is deliberately deferred to its own session) — see docs/PROGRESS.md -->
-            <file name="src/User/Console/CreateCommand.php" />
         </ignoreFiles>
     </projectFiles>
     <issueHandlers>
@@ -41,10 +38,11 @@
                 <directory name="resources" />
             </errorLevel>
         </PossiblyUnusedReturnValue>
-        <!-- Same rationale as the PossiblyUnused* suppressions above: this
-             template repo's Auth/OAuth/2FA port is deliberately deferred (see
-             docs/PROGRESS.md), so several classes genuinely have no callers
-             yet within this repo's own analysis scope. -->
+        <!-- Same rationale as the PossiblyUnused* suppressions above: this is
+             a template repo — several route-bound method params (e.g. the
+             #[RouteArgument('_language')] on every OAuth callback) and
+             classes are consumed by the router/DI container, not by other
+             PHP code Psalm can trace call graphs through. -->
         <UnusedParam>
             <errorLevel type="suppress">
                 <directory name="src" />
@@ -56,6 +54,14 @@
                 <directory name="src" />
             </errorLevel>
         </UnusedClass>
+        <!-- Yiisoft\FormModel\FormModel reads private properties like
+             LoginForm::$rememberMe via reflection (getPropertyValue()), not
+             a direct $this-> reference Psalm's static analysis can trace. -->
+        <UnusedProperty>
+            <errorLevel type="suppress">
+                <directory name="src/Auth/Form" />
+            </errorLevel>
+        </UnusedProperty>
         <!-- Cycle/ORM requires Entity classes not to be final so proxies can
              be created using the ProxyFactory. -->
         <ClassMustBeFinal errorLevel="suppress">
