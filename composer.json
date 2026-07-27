@@ -20,6 +20,7 @@
         "php": "8.3 - 8.5",
         "ext-ctype": "*",
         "ext-curl": "*",
+        "ext-filter": "*",
         "ext-intl": "*",
         "ext-json": "*",
         "ext-mbstring": "*",
@@ -117,6 +118,7 @@
     },
     "require-dev": {
         "dg/bypass-finals": "^1.11.0",
+        "maglnet/composer-require-checker": "^4.19",
         "mockery/mockery": "^1.6.12",
         "rector/rector": "^2.5.8",
         "testo/bridge-mockery": "^0.1.1",
