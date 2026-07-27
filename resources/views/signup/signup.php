@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 use App\Auth\Form\SignupForm;
-use Yiisoft\{FormModel\Field as F, Html\Html as H, Html\Tag\Form,
+use Yiisoft\{FormModel\Field as F, Html\Html as H, Html\Tag\A, Html\Tag\Form,
     Router\UrlGeneratorInterface, Translator\TranslatorInterface,
     View\WebView, Yii\AuthClient\Widget\AuthChoice};
 
@@ -47,14 +47,23 @@ echo H::openTag('div', ['class' => (string) $class[1]]);
      */
     foreach ($idpList as $provider => $info) {
         $noContinueButton = $info['noflag'];
-        if (!$noContinueButton) {
-            echo '<br><br>';
-            echo $authChoice->absoluteButtons(
-                $request,
-                $idpList[$provider],
-                $provider
-            );
+        if ($noContinueButton) {
+            continue;
         }
+        $button = $authChoice->absoluteButtons(
+            $request,
+            $idpList[$provider],
+            $provider
+        );
+        // absoluteButtons() returns '' when the provider has no clientId
+        // configured (see AuthChoice::absoluteButtons) — skip the spacing
+        // too, or unconfigured providers leave dead <br><br> gaps above
+        // the form.
+        if ($button === '') {
+            continue;
+        }
+        echo '<br><br>';
+        echo $button;
     }
     echo H::closeTag('div');
     echo H::openTag('div', ['class' => (string) $class[10]]);
@@ -87,6 +96,13 @@ echo H::openTag('div', ['class' => (string) $class[1]]);
     ->name('register-button')
     ->content($translator->translate('layout.submit'));
     echo  new Form()->close();
+    echo H::br();
+    echo new A()
+    ->addClass('text-decoration-none')
+    ->addClass((string) $class[16])
+    ->href($urlGenerator->generate('auth/login'))
+    ->content($translator->translate('account.have.already'))
+    ->render();
     echo H::closeTag('div'); // 5
    echo H::closeTag('div'); // 4
   echo H::closeTag('div'); // 3

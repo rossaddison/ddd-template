@@ -11,6 +11,8 @@ declare(strict_types=1);
 return [
   'account.disabled' => 'Your account has been disabled.'
     . ' Please contact the administrator.',
+  'account.have.already' => 'Already have an account? Log in',
+  'account.no' => "Don't have an account? Sign up",
   'administrator' => 'Administrator',
   'continue.with.facebook' => 'Continue with Facebook',
   'continue.with.github' => 'Continue with Github',

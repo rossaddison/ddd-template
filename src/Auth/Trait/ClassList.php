@@ -9,9 +9,8 @@ trait ClassList
     private function classList(): array
     {
         return [
-            1 => 'container py-5 h-100',
-            2 => 'row d-flex justify-content-center align-items-center'
-                    . ' h-100',
+            1 => 'container py-2',
+            2 => 'row d-flex justify-content-center align-items-center',
             3 => 'col-12 col-md-8 col-lg-6 col-xl-5',
             4 => 'card border border-dark shadow-2-strong rounded-3',
             5 => 'card-header bg-dark text-white',

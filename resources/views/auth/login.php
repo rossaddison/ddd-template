@@ -62,14 +62,23 @@ echo H::openTag('div', ['class' => (string) $class[1]]);
      */
     foreach ($idpList as $provider => $info) {
         $noContinueButton = $info['noflag'];
-        if (!$noContinueButton) {
-            echo '<br><br>';
-            echo $authChoice->authRoutedButtons(
-                'auth/authclient',
-                $idpList[$provider],
-                $provider
-        );
+        if ($noContinueButton) {
+            continue;
         }
+        $button = $authChoice->authRoutedButtons(
+            'auth/authclient',
+            $idpList[$provider],
+            $provider
+        );
+        // authRoutedButtons() returns '' when the provider has no
+        // clientId configured (see AuthChoice::authRoutedButtons) — skip
+        // the spacing too, or unconfigured providers leave dead
+        // <br><br> gaps above the form.
+        if ($button === '') {
+            continue;
+        }
+        echo '<br><br>';
+        echo $button;
     }
 
     echo H::closeTag('div');
@@ -143,6 +152,13 @@ echo H::openTag('div', ['class' => (string) $class[1]]);
     ->addClass((string) $class[16])
     ->href($urlGenerator->generate('auth/forgotpassword'))
     ->content($translator->translate('forgot.your.password'))
+    ->render();
+    echo H::br();
+    echo  new A()
+    ->addClass('text-decoration-none')
+    ->addClass((string) $class[16])
+    ->href($urlGenerator->generate('signup/signup'))
+    ->content($translator->translate('account.no'))
     ->render();
     echo H::closeTag('div'); // 5
    echo H::closeTag('div'); // 4
