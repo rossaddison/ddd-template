@@ -1,0 +1,81 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\User\Console;
+
+use App\Auth\Form\SignupForm;
+use App\Infrastructure\Persistence\User\User;
+use LogicException;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
+use Yiisoft\FormModel\FormHydrator;
+use Yiisoft\Rbac\Manager;
+use Yiisoft\Yii\Console\ExitCode;
+
+final class CreateCommand extends Command
+{
+    protected static string $defaultName = 'user/create';
+
+    public function __construct(
+        private readonly SignupForm $signupForm,
+        private readonly Manager $manager,
+        private readonly FormHydrator $formHydrator,
+    ) {
+        parent::__construct();
+    }
+
+    #[\Override]
+    protected function configure(): void
+    {
+        $this
+            ->setDescription('Creates a user')
+            ->setHelp('This command allows you to create a user')
+            ->addArgument('login', InputArgument::REQUIRED, 'Login')
+            ->addArgument('password', InputArgument::REQUIRED, 'Password')
+            ->addArgument('isAdmin', InputArgument::OPTIONAL, 'Create user as admin');
+    }
+
+    #[\Override]
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $io = new SymfonyStyle($input, $output);
+
+        /** @var string $login */
+        $login = $input->getArgument('login');
+
+        /** @var string $password */
+        $password = $input->getArgument('password');
+        $isAdmin = (bool) $input->getArgument('isAdmin');
+
+        try {
+            $this->formHydrator->populate(model: $this->signupForm, data: [
+                'login' => $login,
+                'password' => $password,
+                'passwordVerify' => $password,
+            ], scope: '');
+            $user = $this->signupForm->signup();
+        } catch (Throwable) {
+            $io->error('User creation failed.');
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        if (!$user instanceof User) {
+            $errors = $this->signupForm->getValidationResult()->getErrorMessagesIndexedByProperty();
+            array_walk($errors, fn (string $error, string $attribute): mixed => $io->error("$attribute: $error"));
+            return ExitCode::DATAERR;
+        }
+
+        if ($isAdmin) {
+            $userId = $user->reqId();
+            $this->manager->assign('shell-admin', $userId);
+        }
+        $io->success('User created');
+
+        return ExitCode::OK;
+    }
+}

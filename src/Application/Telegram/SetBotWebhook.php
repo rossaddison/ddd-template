@@ -1,0 +1,26 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Application\Telegram;
+
+use App\Domain\Telegram\BotConnectionRepositoryInterface;
+use App\Domain\Telegram\TelegramGatewayInterface;
+
+final readonly class SetBotWebhook
+{
+    public function __construct(
+        private BotConnectionRepositoryInterface $connections,
+        private TelegramGatewayInterface $gateway,
+    ) {
+    }
+
+    public function __invoke(string $webhookUrl): bool
+    {
+        $credentials = $this->connections->get()->credentials();
+        if ($credentials === null) {
+            return false;
+        }
+        return $this->gateway->setWebhook($credentials, $webhookUrl);
+    }
+}
