@@ -2,7 +2,7 @@
 [![Latest Version](https://img.shields.io/packagist/v/rossaddison/ddd-template.svg?style=flat)](https://packagist.org/packages/rossaddison/ddd-template)
 [![Total Downloads](https://img.shields.io/packagist/dt/rossaddison/ddd-template.svg?style=flat)](https://packagist.org/packages/rossaddison/ddd-template)
 [![PHP Version](https://img.shields.io/packagist/php-v/rossaddison/ddd-template.svg?style=flat)](https://packagist.org/packages/rossaddison/ddd-template)
-[![License](https://img.shields.io/packagist/l/rossaddison/ddd-template.svg?style=flat)](https://packagist.org/packages/rossaddison/ddd-template)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 # ddd-template
 
