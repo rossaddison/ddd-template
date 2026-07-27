@@ -1,0 +1,147 @@
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - '.gitignore'
+      - '.env.example'
+      - '.gitattributes'
+      - 'psalm.xml'
+
+  push:
+    branches: ['master']
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - '.gitignore'
+      - '.env.example'
+      - '.gitattributes'
+      - 'psalm.xml'
+
+  schedule:
+    - cron: '0 0 * * *'
+
+name: ddd-template dependency checker
+
+jobs:
+  mutation:
+    name: PHP ${{ matrix.php }}-${{ matrix.os }}
+
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+
+        php:
+          - 8.4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: fileinfo, pdo, pdo_mysql, pdo_sqlite, intl, gd, openssl, dom, json, mbstring, curl, libxml
+          tools: composer:v2, cs2pr
+          coverage: none
+
+      - name: Determine composer cache directory
+        run: echo "COMPOSER_CACHE_DIR=$(composer config cache-dir)" >> $GITHUB_ENV
+
+      - name: Cache dependencies installed with composer
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.COMPOSER_CACHE_DIR }}
+          key: php${{ matrix.php }}-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            php${{ matrix.php }}-composer-
+
+      - name: Update composer
+        run: composer self-update
+
+      - name: Install maglnet/composer-require-checker
+        run: composer require --dev maglnet/composer-require-checker:^4.19
+
+      - name: Check dependency
+        run: vendor/bin/composer-require-checker
+
+  # Alpine (musl libc) leg. Only 3.22 runs for now — the 8.5/edge pairing is
+  # temporarily disabled since edge has an unrelated issue; re-enable once
+  # that clears.
+  mutation-alpine:
+    name: PHP ${{ matrix.php }}-alpine${{ matrix.alpine }}
+
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:${{ matrix.alpine }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '84'
+            alpine: '3.22'
+
+    steps:
+      - name: Install glibc compatibility layer
+        run: apk add --no-cache gcompat
+
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install PHP and extensions
+        run: |
+          apk add --no-cache \
+            php${{ matrix.php }} \
+            php${{ matrix.php }}-phar \
+            php${{ matrix.php }}-bcmath \
+            php${{ matrix.php }}-ctype \
+            php${{ matrix.php }}-curl \
+            php${{ matrix.php }}-dom \
+            php${{ matrix.php }}-fileinfo \
+            php${{ matrix.php }}-gd \
+            php${{ matrix.php }}-iconv \
+            php${{ matrix.php }}-intl \
+            php${{ matrix.php }}-mbstring \
+            php${{ matrix.php }}-openssl \
+            php${{ matrix.php }}-pdo \
+            php${{ matrix.php }}-pdo_mysql \
+            php${{ matrix.php }}-pdo_sqlite \
+            php${{ matrix.php }}-simplexml \
+            php${{ matrix.php }}-sodium \
+            php${{ matrix.php }}-tokenizer \
+            php${{ matrix.php }}-xml \
+            php${{ matrix.php }}-xmlreader \
+            php${{ matrix.php }}-xmlwriter \
+            php${{ matrix.php }}-opcache
+          ln -sf /usr/bin/php${{ matrix.php }} /usr/bin/php
+          php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+          php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+          rm composer-setup.php
+
+      # Alpine's stock php.ini defaults to memory_limit=128M, which
+      # composer-require-checker's AST parsing of the full codebase exceeds.
+      - name: Raise PHP memory_limit
+        run: echo "memory_limit=-1" > /etc/php${{ matrix.php }}/conf.d/99-memory-limit.ini
+
+      - name: Determine composer cache directory
+        run: echo "COMPOSER_CACHE_DIR=$(composer config cache-dir)" >> $GITHUB_ENV
+
+      - name: Cache dependencies installed with composer
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ env.COMPOSER_CACHE_DIR }}
+          key: php${{ matrix.php }}-alpine${{ matrix.alpine }}-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            php${{ matrix.php }}-alpine${{ matrix.alpine }}-composer-
+
+      - name: Install maglnet/composer-require-checker
+        run: composer require --dev maglnet/composer-require-checker:^4.19
+
+      - name: Check dependency
+        run: vendor/bin/composer-require-checker
