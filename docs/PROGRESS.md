@@ -114,6 +114,44 @@ exercised.
   `Tests/Testo/Auth/Controller/AuthTfaHelperTest.php` covering the
   TOTP/backup-code validation logic.
 
+## Infrastructure hardening — ported from `rossaddison/invoice`, July 2026
+
+Two generic Yii3 improvements made in `invoice` today, ported here since
+both are framework-level patterns rather than invoicing-domain features
+(the actual Worker-allocation/bulk-copy invoice features built in that
+same session were **not** ported — out of scope for this template by
+design, see "What this repo is" above).
+
+- **`CacheInterface` now binds to APCu instead of `FileCache`**
+  (`config/common/di/cache.php`), wherever the `apcu` extension is
+  loaded — guarded with `extension_loaded('apcu')` rather than assumed,
+  since calling `apcu_fetch()` etc. without the extension is a hard fatal
+  error, not a graceful miss. In-memory instead of file I/O for both real
+  consumers: the FastRoute route-dispatch cache (only active when
+  `config/environments/prod/params.php`'s `enableCache` is true) and
+  `yiisoft/rate-limiter`'s `SimpleCacheStorage`.
+  - **Real, non-obvious consequence**: `CacheClearCommand`
+    (`src/Command/CacheClearCommand.php`) now also calls
+    `apcu_clear_cache()`, but that call runs on the CLI — which PHP gives
+    its own APCu memory pool, completely separate from the web server's
+    workers, always, with no configuration that shares them. So
+    `php yii cache/clear` **cannot** actually clear the cache a running
+    web server is serving from once APCu is active; only a web
+    server/PHP-FPM restart does. The command now prints an explicit
+    warning to this effect rather than silently claiming success. Caught
+    via a local smoke test (`php -r '...apcu_store()...'` from the CLI
+    showed `apc.enable_cli=0` here, confirming the pool split) before
+    shipping the overclaim.
+- **`config/web/di/mailer-file.php`** — dev-only (`YII_ENV=dev`) override
+  pointing `MailerInterface` at `yiisoft/mailer`'s `FileMailer` instead of
+  the real `yiisoft/mailer-symfony` ESMTP transport. Every email this app
+  sends (e.g. `ForgotPasswordController`'s reset-link email) gets written
+  to `runtime/mail/*.eml` instead of actually being sent — open the
+  newest file with any text editor and the link is right there, no real
+  inbox needed to test an email-driven flow locally.
+- `.env`/`.env.example`'s `YII_ENV` comment expanded to explain both of
+  the above or point at this section.
+
 ## Live-verified (real MySQL, real `php yii serve`, real HTTP requests)
 
 - Schema sync: `BUILD_DATABASE=true` created `identity`, `recovery_code`,

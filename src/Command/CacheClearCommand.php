@@ -31,11 +31,36 @@ final class CacheClearCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
+        $deleted = $this->clearFileCache($io);
+        $apcuCleared = $this->clearApcuCache();
+
+        $io->success(
+            "Cache cleared — {$deleted} file(s) removed from @runtime/cache."
+        );
+
+        if ($apcuCleared) {
+            $io->warning(
+                'This command runs on the CLI, which has its own separate '
+                . "APCu memory pool from the web server's — it cannot reach "
+                . 'the web workers\' cache from here, only its own (already '
+                . 'empty) one. If CacheInterface is bound to ApcuCache '
+                . '(config/common/di/cache.php) and something route- or '
+                . 'cache-related deployed, restart the web server/PHP-FPM '
+                . 'instead — that is what actually clears the live APCu '
+                . 'cache the web workers are serving from.'
+            );
+        }
+
+        return ExitCode::OK;
+    }
+
+    private function clearFileCache(SymfonyStyle $io): int
+    {
         $cacheDir = $this->aliases->get('@runtime/cache');
 
         if (!is_dir($cacheDir)) {
             $io->warning("Cache directory not found: {$cacheDir}");
-            return ExitCode::OK;
+            return 0;
         }
 
         $deleted = 0;
@@ -48,7 +73,26 @@ final class CacheClearCommand extends Command
             ++$deleted;
         }
 
-        $io->success("Cache cleared — {$deleted} item(s) removed from {$cacheDir}");
-        return ExitCode::OK;
+        return $deleted;
+    }
+
+    /**
+     * IMPORTANT LIMITATION: APCu's shared memory is scoped per SAPI — the
+     * CLI process running this very command has its own separate pool from
+     * the web server's workers, and PHP never shares the two, even with
+     * apc.enable_cli=1. So this call cannot clear the cache the web
+     * workers are actually serving from; it only clears an already
+     * near-empty CLI-local pool. Kept anyway because it's harmless and
+     * free, and does help on the rare setup where CLI and web genuinely
+     * share a pool — but the warning in execute() is what actually matters:
+     * restarting the web server is the real fix once ApcuCache is active.
+     */
+    private function clearApcuCache(): bool
+    {
+        if (!extension_loaded('apcu') || !function_exists('apcu_clear_cache')) {
+            return false;
+        }
+        apcu_clear_cache();
+        return true;
     }
 }
