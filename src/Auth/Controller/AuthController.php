@@ -10,6 +10,7 @@ use App\Application\Setting\GetSetting;
 use App\Domain\Setting\SettingKey;
 use App\Auth\Trait\TwoFactorAuth;
 use App\Service\WebControllerService;
+use App\Infrastructure\Persistence\Identity\Identity;
 use App\Infrastructure\Persistence\User\User;
 use App\User\UserRepository;
 use App\User\RecoveryCodeService;
@@ -251,13 +252,15 @@ final class AuthController
     public function logout(): ResponseInterface
     {
         $identity = $this->authService->getIdentity();
-        $userId = $identity->getId();
+        // getId() returns the identity table's own row id, not the user's —
+        // see resolveLoginResponse() for why that matters here.
+        $userId = $identity instanceof Identity ? $identity->getUserId() : null;
         $tfaEnabled = ($this->getSetting)(new SettingKey('enable_tfa'))?->value();
         $withDisabling = ($this->getSetting)(new SettingKey('enable_tfa_with_disabling'))?->value();
         // if enable_tfa_with_disabling setting has changed during login of admin
         // make sure this is reflected in the user setting.
         if ($withDisabling === '1' && $tfaEnabled === '1') {
-            $this->clearTfaOnLogout($userId, $this->userRepository);
+            $this->clearTfaOnLogout(null !== $userId ? (string) $userId : null, $this->userRepository);
             $this->session->remove('verified_2fa_user_id');
         }
         // prevent session fixation
@@ -299,11 +302,13 @@ final class AuthController
     private function tfaCheckBeforeRedirects(): ResponseInterface
     {
         $identity = $this->authService->getIdentity();
-        $userId = $identity->getId();
+        // getId() returns the identity table's own row id, not the user's —
+        // see resolveLoginResponse() for why that matters here.
+        $userId = $identity instanceof Identity ? $identity->getUserId() : null;
         if (null === $userId) {
             return $this->redirectToMain();
         }
-        $user = $this->userRepository->findById((int) $userId);
+        $user = $this->userRepository->findById($userId);
         if (!$user->isActive()) {
             $this->authService->logout();
             return $this->redirectToAccountDisabled();
@@ -338,19 +343,24 @@ final class AuthController
         CookieLogin $cookieLogin,
     ): ?ResponseInterface {
         $identity = $this->authService->getIdentity();
-        $userId = $identity->getId();
-        $user = null !== $userId ? $this->userRepository->findById((int) $userId) : null;
+        // getId() returns the identity table's own row id, not the user's —
+        // those two frequently diverge (see docs/IDENTITY_VS_USER_ID_AUTH_FIX.md),
+        // which silently broke every lookup below for any account where they
+        // don't coincidentally match.
+        $userId = $identity instanceof Identity ? $identity->getUserId() : null;
+        $user = null !== $userId ? $this->userRepository->findById($userId) : null;
         if (null === $userId || null === $user) {
             return null;
         }
+        $userIdString = (string) $userId;
         // 2FA is mandatory for admins regardless of the global enable_tfa
         // setting — an admin without TOTP set up is routed into setup by
         // handleTfaPath() below, same as any other 2FA-required user.
         $tfaEnabled = ($this->getSetting)(new SettingKey('enable_tfa'))?->value();
-        if ($tfaEnabled === '1' || $this->isAdminUser($userId)) {
-            return $this->handleTfaPath($userId, $user);
+        if ($tfaEnabled === '1' || $this->isAdminUser($userIdString)) {
+            return $this->handleTfaPath($userIdString, $user);
         }
-        return $this->handleNonTfaPath($userId, $user, $cookieLogin, $loginForm);
+        return $this->handleNonTfaPath($userIdString, $user, $cookieLogin, $loginForm);
     }
 
     private function handleTfaPath(string $userId, User $user): ResponseInterface
